@@ -1,6 +1,6 @@
-from codebase_services.services import CodeExtractorService
-from codebase_services.services import CodeReportService
-from codebase_services.core import PythonASTParser, FileWriter, ImportAnalyzer, DependencyResolver, ImportOptimizer
+from services import CodeExtractorService
+from services import CodeReportService
+from core import PythonASTParser, FileWriter, ImportAnalyzer, DependencyResolver, ImportOptimizer
 
 
 def create_extractor() -> CodeExtractorService:

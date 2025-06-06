@@ -1,5 +1,5 @@
 from typing import List
-from codebase_services.entities import ImportStatement
+from entities import ImportStatement
 
 class ImportOptimizer:
     """

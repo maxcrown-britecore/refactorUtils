@@ -1,4 +1,4 @@
-from codebase_services.core import CodeParser, FileWriter, ImportAnalyzer, DependencyResolver, ImportOptimizer
+from core import CodeParser, FileWriter, ImportAnalyzer, DependencyResolver, ImportOptimizer
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
