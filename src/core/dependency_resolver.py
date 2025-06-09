@@ -1,5 +1,5 @@
 from typing import List
-from codebase_services.entities import ImportStatement, UsedName
+from entities import ImportStatement, UsedName
 import ast
 from typing import Set
 
@@ -11,7 +11,7 @@ class DependencyResolver:
     This is like a smart packing assistant that only packs what you'll actually use.
     """
 
-    def find_entity_dependencies(self, entity_name: str, entity_code: str, all_entity_names: List[str]) -> List[str]:
+    def find_entity_dependencies(self, entity_name: str|None, entity_code: str, all_entity_names: List[str]) -> List[str]:
         """
         Given the source code of an entity, return a list of other entity names
         (functions or classes) it references from the same file.
