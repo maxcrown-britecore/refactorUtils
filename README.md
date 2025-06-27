@@ -168,3 +168,21 @@ This tool treats code transformation like a **well-organized kitchen**:
 - **Core Components** = The specialized tools that make both processes efficient and reliable
 
 Each service is assembled from specialized components, ensuring reliability, maintainability, and extensibility.
+
+## 📚 Using This Project in iPython/Jupyter Notebooks
+
+If you want to use this project from an iPython or Jupyter notebook in the root directory, and your source code is now inside the `src/` subdirectory, add the following lines at the top of your notebook:
+
+```python
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path().resolve() / "src"))
+```
+
+This allows you to import your packages as before, for example:
+
+```python
+from services.report_service import CodeReportService
+```
+
+No need to change your import statements to include `src.` as a prefix.

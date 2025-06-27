@@ -1,6 +1,6 @@
 from typing import List, Union
 from pathlib import Path
-from codebase_services.entities import ImportStatement
+from entities import ImportStatement
 import ast
 
 
@@ -26,14 +26,14 @@ class ImportAnalyzer:
                     for alias in node.names:
                         imports.append(ImportStatement(
                             module=alias.name,
-                            names=[],
+                            names=(),
                             alias=alias.asname,
                             original_line=ast.get_source_segment(source_code, node) or ""
                         ))
                 
                 elif isinstance(node, ast.ImportFrom):
                     if node.module:  # Skip relative imports without module name
-                        names = [alias.name for alias in node.names] if node.names else []
+                        names = tuple(alias.name for alias in node.names) if node.names else ()
                         imports.append(ImportStatement(
                             module=node.module,
                             names=names,

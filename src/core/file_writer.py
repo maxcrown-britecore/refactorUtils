@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import List
 import ast
-from codebase_services.entities import CodeEntity
+from entities import CodeEntity
 
 
 class FileWriter:
