@@ -1,6 +1,17 @@
-from services import CodeExtractorService
-from services import CodeReportService
-from core import PythonASTParser, FileWriter, ImportAnalyzer, DependencyResolver, ImportOptimizer
+import sys
+from pathlib import Path
+
+# Add src to Python path for development
+src_path = Path(__file__).parent / "src"
+sys.path.insert(0, str(src_path))
+
+from services.extractor_service import CodeExtractorService
+from services.report_service import CodeReportService  
+from core.parser import PythonASTParser
+from core.file_writer import FileWriter
+from core.import_analyzer import ImportAnalyzer
+from core.dependency_resolver import DependencyResolver
+from core.import_optimizer import ImportOptimizer
 
 
 def create_extractor() -> CodeExtractorService:

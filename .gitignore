@@ -8,3 +8,7 @@ venv/
 .env
 
 .agent.md
+
+codebase_services.egg-info
+
+uv.lock

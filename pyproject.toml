@@ -1,0 +1,26 @@
+[project]
+name = "codebase-services"
+version = "0.1.0"
+description = "A comprehensive Python tool for codebase analysis and code extraction"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "pandas",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "flake8",
+]
+
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
