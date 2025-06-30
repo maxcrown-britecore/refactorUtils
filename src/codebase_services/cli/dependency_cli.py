@@ -43,7 +43,7 @@ def main():
     parser.add_argument(
         "--format",
         "-f",
-        choices=["tree", "graph", "list"],
+        choices=["tree", "graph", "list", "df"],
         default="tree",
         help="Output format (default: tree)"
     )
@@ -129,6 +129,10 @@ def main():
             for i, dep in enumerate(all_deps, 1):
                 output += f"{i:2d}. {dep.name} ({dep.entity_type}) - {dep.dependency_type}\n"
                 output += f"     📁 {dep.file_path}:{dep.line_start}\n"
+        
+        elif args.format == "df":
+            all_deps = tree.get_all_dependencies_df()
+            output = all_deps
         
         # Save or print output
         if args.output:

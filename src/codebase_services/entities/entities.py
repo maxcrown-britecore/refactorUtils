@@ -7,7 +7,7 @@ Follows clean architecture principles with separation of concerns.
 """
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Dict, Any
-
+import pandas as pd
 
 @dataclass
 class CodeEntity:
@@ -168,6 +168,12 @@ class DependencyTree:
                 unique_result.append(node)
         
         return unique_result
+    
+    def get_all_dependencies_df(self) -> pd.DataFrame:
+        """Get all dependencies as a DataFrame."""
+        affected_dependencies = self.get_all_dependencies()
+        list_of_dicts = [node.__dict__ for node in affected_dependencies]
+        return pd.DataFrame(list_of_dicts)
     
     def _flatten_dependencies(self, tree_dict: Dict[str, Any]) -> List[DependencyNode]:
         """Recursively flatten dependency tree to list."""
