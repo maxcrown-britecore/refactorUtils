@@ -1,4 +1,4 @@
-from core import CodeParser, DependencyResolver
+from ..core import CodeParser, DependencyResolver
 from pathlib import Path
 import pandas as pd
 from typing import List, Dict, Any

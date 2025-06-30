@@ -1,5 +1,5 @@
 from typing import List
-from entities import ImportStatement
+from ..entities import ImportStatement
 
 class ImportOptimizer:
     """

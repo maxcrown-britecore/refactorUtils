@@ -1,6 +1,6 @@
 from typing import List, Union
 from pathlib import Path
-from entities import ImportStatement
+from ..entities import ImportStatement
 import ast
 
 
