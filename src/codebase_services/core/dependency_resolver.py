@@ -1,5 +1,5 @@
 from typing import List
-from entities import ImportStatement, UsedName
+from ..entities import ImportStatement, UsedName
 import ast
 from typing import Set
 

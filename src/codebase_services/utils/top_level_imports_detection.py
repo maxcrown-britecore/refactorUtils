@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import List, Dict, Set
 
 # Core utilities
-from core import ImportAnalyzer, DependencyResolver
-from entities.entities import ImportStatement
+from ..core import ImportAnalyzer, DependencyResolver
+from ..entities.entities import ImportStatement
 
 
 def move_imports_to_functions(file_path: str):

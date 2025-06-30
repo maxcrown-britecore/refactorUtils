@@ -1,0 +1,78 @@
+[project]
+name = "codebase_services"
+version = "0.1.0"
+description = "A comprehensive Python tool for codebase analysis and code extraction"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {file = "LICENSE"}
+authors = [
+    {name = "maxcrown-britecore", email = "maxicorona@gmail.com"}
+]
+maintainers = [
+    {name = "maxcrown-britecore", email = "maxicorona@gmail.com"},
+    {name = "AOsinskiBC", email = "aosinskibc@gmail.com"},
+]
+keywords = [
+    "code-analysis", 
+    "code-extraction", 
+    "dependency-tree", 
+    "refactoring", 
+    "python-tools",
+    "ast-parser",
+    "code-report"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities"
+]
+dependencies = [
+    "pandas>=1.3.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/maxcrown-britecore/codebase_services"
+Repository = "https://github.com/maxcrown-britecore/codebase_services"
+Issues = "https://github.com/maxcrown-britecore/codebase_services/issues"
+Documentation = "https://github.com/maxcrown-britecore/codebase_services#readme"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "black>=21.0",
+    "flake8>=3.8",
+    "mypy>=0.900",
+]
+
+[project.scripts]
+codebase-extract = "codebase_services.cli.extractor_cli:main"
+codebase-report = "codebase_services.cli.report_cli:main"
+codebase-deps = "codebase_services.cli.dependency_cli:main"
+
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 79
+target-version = ["py38"]
+
+[tool.flake8]
+max-line-length = 79
+extend-ignore = ["E203", "W503"]
