@@ -42,11 +42,11 @@ def create_report_service() -> CodeReportService:
 
 def create_dependency_tree_service() -> DependencyTreeService:
     """
-    Factory function to create a configured dependency tree service.
+    Factory function to create a fully configured DependencyTreeService
+    with enhanced path tracking capabilities.
     
-    Like having an architect who maps out the relationships between all
-    parts of your codebase - shows what depends on what and how changes
-    would impact other components.
+    Returns:
+        DependencyTreeService: Configured service instance
     """
     parser = PythonASTParser()
     dependency_resolver = DependencyResolver()

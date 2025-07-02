@@ -44,7 +44,7 @@ class UsedName:
 
 @dataclass
 class DependencyNode:
-    """Represents a single node in the dependency tree."""
+    """Represents a single node in the dependency tree with path tracking."""
     name: str
     entity_type: str  # 'function', 'class', 'module'
     file_path: str
@@ -52,14 +52,41 @@ class DependencyNode:
     line_end: int
     dependency_type: str  # 'import', 'call', 'inheritance', 'attribute_access'
     depth: int = 0
+    
+    # NEW: Parent-child relationship tracking
+    parent_node_id: Optional[str] = None
+    dependency_path: List[str] = field(default_factory=list)
+    children_node_ids: List[str] = field(default_factory=list)
+    
+    @property
+    def node_id(self) -> str:
+        """Unique identifier for this node."""
+        return f"{self.name}@{self.file_path}:{self.line_start}"
+    
+    @property
+    def path_string(self) -> str:
+        """Human-readable dependency path from root."""
+        if not self.dependency_path:
+            return self.name
+        return " → ".join(self.dependency_path + [self.name])
+    
+    @property
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        base_dict = self.__dict__
+        base_dict['node_id'] = self.node_id
+        return base_dict
 
 
 @dataclass
 class DependencyTree:
-    """Container for dependency tree analysis results."""
+    """Container for dependency tree analysis results with path tracking."""
     target: DependencyNode
     upstream: Dict[str, Any] = field(default_factory=dict)
     downstream: Dict[str, Any] = field(default_factory=dict)
+    
+    # NEW: Node registry for path reconstruction
+    node_registry: Dict[str, DependencyNode] = field(default_factory=dict)
     
     def to_pretty_string(self, show_upstream: bool = True, 
                          show_downstream: bool = True) -> str:
@@ -172,7 +199,7 @@ class DependencyTree:
     def get_all_dependencies_df(self) -> pd.DataFrame:
         """Get all dependencies as a DataFrame."""
         affected_dependencies = self.get_all_dependencies()
-        list_of_dicts = [node.__dict__ for node in affected_dependencies]
+        list_of_dicts = [node.to_dict for node in affected_dependencies]
         return pd.DataFrame(list_of_dicts)
     
     def _flatten_dependencies(self, tree_dict: Dict[str, Any]) -> List[DependencyNode]:
@@ -187,3 +214,88 @@ class DependencyTree:
                 result.extend(self._flatten_dependencies(subtree))
         
         return result
+    
+    def dependency_depths_grouped(self) -> Dict[int, List[DependencyNode]]:
+        """Group dependencies by depth."""
+        grouped = {}
+        for node in self.node_registry.values():
+            depth = node.depth
+            if depth not in grouped:
+                grouped[depth] = []
+            grouped[depth].append(node)
+        return grouped
+    
+    def get_dependency_path(self, node_id: str) -> List[str]:
+        """Get the complete dependency path from root to specified node."""
+        if node_id not in self.node_registry:
+            return []
+        
+        node = self.node_registry[node_id]
+        return node.dependency_path + [node.name]
+    
+    def get_dependency_chain(self, node_id: str) -> List[DependencyNode]:
+        """Get the complete chain of nodes from root to specified node."""
+        if node_id not in self.node_registry:
+            return []
+        
+        chain = []
+        
+        # Start with target
+        chain.append(self.target)
+        
+        # Build chain by following parent relationships
+        current_node_id = node_id
+        path_nodes = []
+        
+        while current_node_id in self.node_registry:
+            node = self.node_registry[current_node_id]
+            path_nodes.append(node)
+            current_node_id = node.parent_node_id
+            if not current_node_id:
+                break
+        
+        # Reverse to show root → target path
+        chain.extend(reversed(path_nodes))
+        return chain
+    
+    def get_children_of_node(self, node_id: str) -> List[DependencyNode]:
+        """Get all direct children of a specific node."""
+        if node_id not in self.node_registry:
+            return []
+        
+        node = self.node_registry[node_id]
+        return [self.node_registry[child_id] for child_id in node.children_node_ids 
+                if child_id in self.node_registry]
+    
+    def to_path_report(self) -> str:
+        """Generate a report showing dependency paths."""
+        result = []
+        result.append(f"📊 Dependency Path Analysis for: {self.target.name}")
+        result.append("=" * 60)
+        result.append("")
+        
+        # Group nodes by depth
+        depth_groups = {}
+        for node in self.node_registry.values():
+            depth = node.depth
+            if depth not in depth_groups:
+                depth_groups[depth] = []
+            depth_groups[depth].append(node)
+        
+        # Show paths for each depth level
+        for depth in sorted(depth_groups.keys()):
+            nodes = depth_groups[depth]
+            result.append(f"🔍 Depth {depth} Dependencies ({len(nodes)} nodes):")
+            result.append("")
+            
+            for node in nodes[:10]:  # Show first 10 per depth
+                result.append(f"   📍 {node.name} [{node.dependency_type}]")
+                result.append(f"      Path: {node.path_string}")
+                result.append(f"      File: {node.file_path}:{node.line_start}")
+                result.append("")
+            
+            if len(nodes) > 10:
+                result.append(f"   ... and {len(nodes) - 10} more at depth {depth}")
+                result.append("")
+        
+        return "\n".join(result)

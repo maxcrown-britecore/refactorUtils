@@ -38,6 +38,12 @@ def main():
         default="table",
         help="Output format (default: table)"
     )
+    parser.add_argument(
+        "--cluster",
+        "-c",
+        action="store_true",
+        help="Cluster code entities by similarity"
+    )
     
     args = parser.parse_args()
     
@@ -65,6 +71,10 @@ def main():
             df = reporter.generate_code_report(file_paths[0])
         else:
             df = reporter.generate_multi_file_report(file_paths)
+
+
+        if args.cluster:
+            df = reporter.cluster_code_entities(df)
         
         # Get summary statistics
         stats = reporter.get_summary_statistics(df)

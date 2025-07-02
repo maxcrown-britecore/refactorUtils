@@ -143,7 +143,7 @@ print(f"Functions: {stats['functions_count']}")
 print(f"Classes: {stats['classes_count']}")
 ```
 
-### 3. Dependency Tree Service
+### 3. Enhanced Dependency Tree Service with Path Tracking
 
 #### Basic Dependency Analysis
 ```python
@@ -161,6 +161,34 @@ tree = dependency_service.build_dependency_tree(
 
 # Print the dependency tree
 print(tree.to_pretty_string())
+```
+
+#### 🆕 Enhanced Path Tracking Features
+```python
+# Get complete dependency paths (NEW!)
+all_deps = tree.get_all_dependencies()
+for dep in all_deps[:5]:
+    path = tree.get_dependency_path(dep.node_id)
+    print(f"Path to {dep.name}: {' → '.join(path)}")
+
+# Get dependency chain with full node objects (NEW!)
+chain = tree.get_dependency_chain(some_node_id)
+print("Complete dependency chain:")
+for i, node in enumerate(chain):
+    print(f"  {i+1}. {node.name} ({node.entity_type})")
+
+# Find children of any node (NEW!)
+children = tree.get_children_of_node(parent_node_id)
+print(f"Direct children: {[child.name for child in children]}")
+
+# Group dependencies by depth (NEW!)
+depth_groups = tree.dependency_depths_grouped()
+for depth, nodes in depth_groups.items():
+    print(f"Depth {depth}: {len(nodes)} dependencies")
+
+# Generate enhanced path report (NEW!)
+path_report = tree.to_path_report()
+print(path_report)
 ```
 
 #### Advanced Dependency Analysis
@@ -203,6 +231,36 @@ plt.show()
 print(f"Nodes: {graph.number_of_nodes()}")
 print(f"Edges: {graph.number_of_edges()}")
 print(f"Strongly connected components: {len(list(nx.strongly_connected_components(graph)))}")
+```
+
+#### 🆕 Interactive Graph Visualization
+```python
+# Create interactive HTML dependency graph with Pyvis
+html_file = dependency_service.create_interactive_dependency_graph(
+    tree=tree,
+    output_filename="my_dependency_graph.html",
+    height="900px",
+    width="100%"
+)
+
+print(f"🎯 Interactive graph saved to: {html_file}")
+print("🌐 Open in your browser for interactive exploration!")
+
+# Advanced interactive graph with custom styling
+html_file = dependency_service.create_interactive_dependency_graph(
+    tree=tree,
+    output_filename="custom_graph.html",
+    height="1200px",  # Larger height
+    width="100%"
+)
+
+# Features of the interactive graph:
+# - Drag and zoom functionality
+# - Click on nodes to see details
+# - Physics simulation for natural layout
+# - Depth-based node positioning
+# - Hover tooltips with full node information
+# - Directed edges showing dependency flow
 ```
 
 ## 🖥️ CLI Usage
@@ -281,6 +339,14 @@ codebase-deps src/services/payment.py PaymentService class \
 codebase-deps src/models/user.py User class --format tree
 codebase-deps src/models/user.py User class --format graph
 codebase-deps src/models/user.py User class --format list
+codebase-deps src/models/user.py User class --format df
+
+# 🆕 NEW: Enhanced path tracking formats
+codebase-deps src/models/user.py User class --format paths
+codebase-deps src/models/user.py User class --format depths
+
+# 🆕 NEW: Interactive graph visualization
+codebase-deps src/models/user.py User class --format interactive
 ```
 
 #### Output Options
@@ -293,7 +359,190 @@ codebase-deps src/models/user.py User class --upstream-only
 
 # Show only downstream dependencies
 codebase-deps src/models/user.py User class --downstream-only
+
+# 🆕 Interactive graph generation
+codebase-deps src/models/user.py User class --format interactive
+codebase-deps src/models/user.py User class --format interactive --output my_graph.html
 ```
+
+## 🆕 Enhanced Path Tracking Features
+
+### Understanding Dependency Paths
+
+The enhanced dependency tree service now provides **complete path tracking**, allowing you to see exactly how dependencies are connected through multiple levels. This solves the common problem of knowing a dependency exists at a certain depth but not knowing the complete path to reach it.
+
+#### Key Capabilities
+
+1. **Complete Dependency Paths**: See the full chain from root to any dependency
+2. **Parent-Child Relationships**: Navigate the dependency tree bidirectionally  
+3. **Fast Node Lookup**: O(1) access to any node by unique ID
+4. **Path Reconstruction**: Get complete dependency chains as node objects
+5. **Children Discovery**: Find all direct dependents of any node
+
+#### CLI Format Options
+
+```bash
+# Generate detailed path report
+codebase-deps src/models/user.py User class --format paths
+
+# Show dependencies grouped by depth with paths
+codebase-deps src/models/user.py User class --format depths
+
+# 🆕 Generate interactive HTML graph (NEW!)
+codebase-deps src/models/user.py User class --format interactive
+
+# Save path analysis for review
+codebase-deps src/core/payment.py PaymentProcessor class \
+  --format paths \
+  --output payment_processor_paths.txt
+
+# 🆕 Interactive graph with custom filename (NEW!)
+codebase-deps src/core/payment.py PaymentProcessor class \
+  --format interactive \
+  --output payment_processor_dependencies.html
+```
+
+#### Real-World Path Tracking Example
+
+```python
+from pathlib import Path
+from codebase_services import create_dependency_tree_service
+
+# Analyze a critical business class
+dependency_service = create_dependency_tree_service()
+tree = dependency_service.build_dependency_tree(
+    file_path=Path("src/billing/invoice.py"),
+    entity_name="InvoiceProcessor", 
+    entity_type="class",
+    max_depth=3,
+    codebase_root=Path("src")
+)
+
+print(f"📊 Found {len(tree.node_registry)} nodes with complete path tracking")
+
+# Find specific dependencies and their paths
+depth_groups = tree.dependency_depths_grouped()
+for depth, nodes in depth_groups.items():
+    print(f"\n🔍 Depth {depth}: {len(nodes)} dependencies")
+    
+    for node in nodes[:3]:  # Show first 3 per depth
+        print(f"   📍 {node.name}")
+        print(f"   🗺️  Path: {node.path_string}")
+        
+        # Get complete dependency chain
+        chain = tree.get_dependency_chain(node.node_id)
+        if len(chain) > 1:
+            chain_names = [n.name for n in chain]
+            print(f"   🔗 Chain: {' → '.join(chain_names)}")
+        
+        # Show children (what depends on this node)
+        children = tree.get_children_of_node(node.node_id)
+        if children:
+            child_names = [child.name for child in children[:3]]
+            print(f"   👶 Children: {', '.join(child_names)}")
+
+# Generate comprehensive path report
+with open("invoice_processor_impact.txt", "w") as f:
+    f.write(tree.to_path_report())
+
+print("✅ Complete impact analysis saved to invoice_processor_impact.txt")
+```
+
+#### Business Value of Path Tracking
+
+**Before Enhancement:**
+- ❓ "I know `calculate_tax` is at depth 2, but how is it connected?"
+- ❓ "Which specific path will my changes follow?"
+- ❓ "What's the complete chain of dependencies?"
+
+**After Enhancement:**
+- ✅ **Complete Visibility**: `InvoiceProcessor → BillingService → TaxCalculator → calculate_tax`
+- ✅ **Impact Planning**: See exact paths changes will propagate through
+- ✅ **Risk Assessment**: Identify critical dependency chains
+- ✅ **Refactoring Guidance**: Understand complete dependency structure
+
+## 🎨 Interactive Dependency Visualization
+
+### New Interactive Graph Feature
+
+The latest enhancement includes **interactive HTML dependency graphs** using Pyvis for beautiful, explorable visualizations that work in any web browser.
+
+#### Key Features of Interactive Graphs
+
+1. **🖱️ Interactive Exploration**: Drag, zoom, and click on nodes
+2. **🎯 Node Details**: Hover tooltips with complete node information
+3. **🔄 Physics Simulation**: Natural layout with force-directed positioning
+4. **📊 Depth Visualization**: Color-coded or level-based node positioning
+5. **🔗 Directed Edges**: Clear dependency flow visualization
+6. **💻 Browser-based**: Works offline in any modern web browser
+
+#### Python Library Usage
+
+```python
+from pathlib import Path
+from codebase_services import create_dependency_tree_service
+
+# Create the dependency service
+dependency_service = create_dependency_tree_service()
+
+# Build dependency tree
+tree = dependency_service.build_dependency_tree(
+    file_path=Path("src/services/payment_service.py"),
+    entity_name="PaymentService",
+    entity_type="class",
+    max_depth=3
+)
+
+# Generate interactive graph
+html_file = dependency_service.create_interactive_dependency_graph(
+    tree=tree,
+    output_filename="payment_service_graph.html",
+    height="900px",
+    width="100%"
+)
+
+print(f"🎯 Interactive dependency graph created: {html_file}")
+print("🌐 Open this file in your browser to explore dependencies!")
+```
+
+#### CLI Usage Examples
+
+```bash
+# Basic interactive graph
+codebase-deps src/models/user.py User class --format interactive
+
+# Custom filename and deep analysis
+codebase-deps src/core/processor.py DataProcessor class \
+  --format interactive \
+  --max-depth 4 \
+  --output data_processor_visualization.html
+
+# Focus on specific dependency direction
+codebase-deps src/api/routes.py UserRoutes class \
+  --format interactive \
+  --downstream-only \
+  --output user_routes_impact.html
+```
+
+#### What Gets Generated
+
+The interactive graph includes:
+- **Target Entity**: Highlighted center node
+- **All Dependencies**: Connected with directed edges
+- **Depth Information**: Visual hierarchy
+- **File Paths**: Clickable node details
+- **Dependency Types**: Color-coded or labeled edges
+- **Interactive Controls**: Pan, zoom, drag functionality
+
+#### Business Value
+
+**Perfect for:**
+- 📋 **Stakeholder Reviews**: Share visual dependency analysis with non-technical team members
+- 🎯 **Impact Presentations**: Show the scope of proposed changes visually
+- 🔍 **Code Exploration**: Interactive discovery of unfamiliar codebases
+- 📚 **Documentation**: Include in technical documentation and architecture guides
+- 🤝 **Team Collaboration**: Share dependency insights across development teams
+- 🎓 **Onboarding**: Help new developers understand code structure visually
 
 ## 🚀 Real-World Examples
 
@@ -383,6 +632,199 @@ echo "Files that need updating before removing old_module.py:"
 cat dependencies_to_fix.txt
 ```
 
+### Example 5: Enhanced Impact Analysis with Path Tracking
+
+```python
+from pathlib import Path
+from codebase_services import create_dependency_tree_service
+
+# Before making breaking changes to a critical class
+dependency_service = create_dependency_tree_service()
+tree = dependency_service.build_dependency_tree(
+    file_path=Path("src/core/base_event.py"),
+    entity_name="BaseEvent", 
+    entity_type="class",
+    max_depth=3,
+    codebase_root=Path("src")
+)
+
+print("🚨 IMPACT ANALYSIS: BaseEvent Changes")
+print("=" * 50)
+
+# Use new path tracking to understand complete impact
+depth_groups = tree.dependency_depths_grouped()
+
+critical_paths = []
+for depth, nodes in depth_groups.items():
+    if depth > 0:  # Skip the target itself
+        print(f"\n📊 Depth {depth} Impact: {len(nodes)} affected components")
+        
+        for node in nodes:
+            path = tree.get_dependency_path(node.node_id)
+            path_str = " → ".join(path)
+            
+            # Identify critical business components
+            if any(keyword in node.name.lower() for keyword in 
+                   ['payment', 'billing', 'user', 'auth', 'policy']):
+                critical_paths.append({
+                    'component': node.name,
+                    'path': path_str,
+                    'file': node.file_path,
+                    'type': node.dependency_type
+                })
+
+print(f"\n🚨 CRITICAL BUSINESS COMPONENTS AFFECTED:")
+print("-" * 40)
+for item in critical_paths[:10]:  # Show top 10 critical
+    print(f"⚠️  {item['component']}")
+    print(f"   📍 Path: {item['path']}")
+    print(f"   📁 File: {Path(item['file']).name}")
+    print(f"   🔗 Type: {item['type']}")
+    print()
+
+# Generate detailed path report for stakeholders
+report_path = "base_event_impact_analysis.txt"
+with open(report_path, "w") as f:
+    f.write("🚨 BaseEvent Impact Analysis Report\n")
+    f.write("=" * 50 + "\n\n")
+    f.write(f"Total affected components: {len(tree.get_all_dependencies())}\n")
+    f.write(f"Critical business components: {len(critical_paths)}\n\n")
+    f.write(tree.to_path_report())
+
+print(f"✅ Detailed impact analysis saved to: {report_path}")
+print(f"📋 Share this report with your team before making changes!")
+```
+
+### Example 6: CLI-Based Path Analysis
+
+```bash
+# Quick path analysis for critical components
+echo "🔍 Analyzing payment processor dependencies..."
+codebase-deps src/billing/payment_processor.py PaymentProcessor class \
+  --format paths \
+  --max-depth 2 \
+  --output payment_paths.txt
+
+echo "📊 Depth-grouped analysis..."  
+codebase-deps src/billing/payment_processor.py PaymentProcessor class \
+  --format depths \
+  --max-depth 2
+
+echo "💾 Results saved to payment_paths.txt for team review"
+
+# Before refactoring - understand the complete dependency structure
+echo "📋 Pre-refactoring dependency audit..."
+codebase-deps src/legacy/old_service.py LegacyService class \
+  --format paths \
+  --downstream-only \
+  --output legacy_service_dependencies.txt
+
+echo "✅ Review legacy_service_dependencies.txt before refactoring"
+```
+
+### Example 7: Interactive Graph Generation for Stakeholders 🆕
+
+```bash
+# Generate interactive graphs for different audiences
+
+echo "🎯 Creating interactive graph for technical review..."
+codebase-deps src/core/authentication.py AuthManager class \
+  --format interactive \
+  --max-depth 3 \
+  --output auth_manager_technical.html
+
+echo "📋 Creating focused graph for security audit..."
+codebase-deps src/security/validator.py SecurityValidator class \
+  --format interactive \
+  --downstream-only \
+  --output security_impact_audit.html
+
+echo "🎨 Creating comprehensive graph for architecture documentation..."
+codebase-deps src/api/main_router.py MainRouter class \
+  --format interactive \
+  --max-depth 4 \
+  --output api_architecture_overview.html
+
+echo "✅ Interactive graphs generated!"
+echo "🌐 Share these HTML files with:"
+echo "   • auth_manager_technical.html - Engineering team"
+echo "   • security_impact_audit.html - Security team"  
+echo "   • api_architecture_overview.html - Architecture documentation"
+```
+
+### Example 8: Python Library Interactive Workflow 🆕
+
+```python
+from pathlib import Path
+from codebase_services import create_dependency_tree_service
+
+# Multi-purpose interactive graph generation workflow
+dependency_service = create_dependency_tree_service()
+
+def generate_interactive_analysis(entity_info, audience="technical"):
+    """Generate interactive graphs for different audiences."""
+    
+    tree = dependency_service.build_dependency_tree(
+        file_path=Path(entity_info['file']),
+        entity_name=entity_info['name'],
+        entity_type=entity_info['type'],
+        max_depth=entity_info.get('depth', 3)
+    )
+    
+    # Generate appropriate filename
+    base_name = f"{entity_info['name'].lower()}_{audience}"
+    html_file = f"{base_name}_dependencies.html"
+    
+    # Create interactive graph
+    result_file = dependency_service.create_interactive_dependency_graph(
+        tree=tree,
+        output_filename=html_file,
+        height="1000px" if audience == "detailed" else "800px",
+        width="100%"
+    )
+    
+    # Get summary stats
+    all_deps = tree.get_all_dependencies()
+    depth_groups = tree.dependency_depths_grouped()
+    max_depth = max(depth_groups.keys()) if depth_groups else 0
+    
+    return {
+        'file': result_file,
+        'stats': {
+            'total_dependencies': len(all_deps),
+            'max_depth': max_depth,
+            'depth_distribution': {d: len(nodes) for d, nodes in depth_groups.items()}
+        }
+    }
+
+# Generate graphs for different components and audiences
+components = [
+    {'file': 'src/models/user.py', 'name': 'User', 'type': 'class', 'depth': 2},
+    {'file': 'src/services/payment.py', 'name': 'PaymentService', 'type': 'class', 'depth': 3},
+    {'file': 'src/core/database.py', 'name': 'DatabaseManager', 'type': 'class', 'depth': 2}
+]
+
+print("🎯 Generating interactive dependency analysis suite...")
+print("=" * 60)
+
+for component in components:
+    for audience in ['technical', 'overview', 'detailed']:
+        result = generate_interactive_analysis(component, audience)
+        
+        print(f"\n📊 {component['name']} - {audience.title()} Analysis")
+        print(f"   📄 File: {result['file']}")
+        print(f"   📈 Dependencies: {result['stats']['total_dependencies']}")
+        print(f"   📏 Max Depth: {result['stats']['max_depth']}")
+        print(f"   🔍 Distribution: {result['stats']['depth_distribution']}")
+
+print(f"\n✅ Interactive analysis suite complete!")
+print(f"🌐 Open the HTML files in your browser to explore dependencies")
+print(f"📋 Share appropriate graphs with different stakeholders:")
+print(f"   • technical_* - For developers and code reviews")
+print(f"   • overview_* - For managers and quick impact assessment")  
+print(f"   • detailed_* - For architecture reviews and documentation")
+```
+
 ## 🎯 Best Practices
 
 ### For Code Extraction
@@ -397,6 +839,23 @@ cat dependencies_to_fix.txt
 2. **Focus scope**: Use `--codebase-root` to analyze specific directories
 3. **Save results**: Use `--output` for complex analyses you'll reference later
 4. **Regular audits**: Check dependencies before making breaking changes
+
+### 🆕 For Enhanced Path Tracking
+1. **Use path reports**: `--format paths` for stakeholder reviews before major changes
+2. **Depth analysis**: `--format depths` to understand impact distribution
+3. **Critical path identification**: Focus on business-critical dependency chains
+4. **Pre-refactoring analysis**: Always generate path reports before structural changes
+5. **Team communication**: Share path analysis reports with affected teams
+6. **Documentation**: Include dependency paths in architectural documentation
+
+### 🎨 For Interactive Graph Visualization
+1. **Stakeholder presentations**: Use `--format interactive` for visual impact demonstrations
+2. **Browser-based sharing**: Share HTML files with non-technical team members
+3. **Architecture documentation**: Include interactive graphs in project documentation
+4. **Code exploration**: Use interactive graphs to understand unfamiliar codebases
+5. **Custom filenames**: Use `--output custom_name.html` for organized graph collections
+6. **Audience-specific graphs**: Generate different depth/scope graphs for different audiences
+7. **Offline accessibility**: Interactive graphs work without internet connection
 
 ### For Reporting
 1. **Automate**: Include reports in CI/CD pipelines

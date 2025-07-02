@@ -208,14 +208,14 @@ class CodeExtractorService:
             self._validate_target_file(target_file)
             
             # Collect all imports and dependencies for all entities
-            all_used_names = set()
+            all_used_names = []
             all_dependencies = set()
             
             for entity in entities:
                 used_names = self.dependency_resolver.find_used_names(
                     entity.source_code
                 )
-                all_used_names.update(used_names)
+                all_used_names.extend(used_names)
                 
                 dependencies = (
                     self.dependency_resolver.find_entity_dependencies(
@@ -258,12 +258,14 @@ class CodeExtractorService:
                 part for part in import_parts if part
             )
             
-            # Add custom block to each entity if provided
+            # Add custom block after imports if provided
             if top_custom_block:
-                entities = [
-                    replace(entity, source_code=f'{top_custom_block}\n\n{entity.source_code}')
-                    for entity in entities
-                ]
+                if combined_imports:
+                    combined_imports = (
+                        combined_imports + "\n\n" + top_custom_block
+                    )
+                else:
+                    combined_imports = top_custom_block
             
             # Append entities to target file
             self._append_entities_to_target(
@@ -350,16 +352,12 @@ class CodeExtractorService:
                 )
 
                 # Write the entity to a file
-                if top_custom_block:
-                    modified_entity = replace(
-                        entity,
-                        source_code=combined_imports + "\n\n" + top_custom_block + "\n\n" + entity.source_code
-                    )    
-                else:
-                    modified_entity = replace(
-                        entity,
-                        source_code=combined_imports + "\n\n\n" + entity.source_code
+                modified_entity = replace(
+                    entity,
+                    source_code=(
+                        combined_imports + "\n\n\n" + entity.source_code
                     )
+                )
 
                 created_file = self.file_writer.write_entity_file(
                     modified_entity, target_dir
