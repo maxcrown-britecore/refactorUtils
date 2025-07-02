@@ -1,8 +1,9 @@
+import ast
+import networkx as nx
 from ..core import CodeParser, DependencyResolver
 from pathlib import Path
 import pandas as pd
 from typing import List, Dict, Any
-import ast
 
 class CodeReportService:
     """
@@ -104,6 +105,40 @@ class CodeReportService:
         combined_df = combined_df.sort_values(['source_file', 'line_start']).reset_index(drop=True)
         
         return combined_df
+    
+    def cluster_code_entities(self, df: 'pd.DataFrame') -> 'pd.DataFrame':
+        """
+        Cluster code entities by similarity.
+        """
+        # Create the graph
+        G = nx.Graph()
+        df['name'].apply(G.add_node)
+
+        # Build dependency map
+        dependency_map = {}
+        for _, row in df.iterrows():
+            for dep in row['internal_dependencies']:
+                dependency_map.setdefault(dep, set()).add(row['name'])
+
+        # Add edges between entities that share dependencies
+        for entities in dependency_map.values():
+            entities = list(entities)
+            for i in range(len(entities)):
+                for j in range(i + 1, len(entities)):
+                    G.add_edge(entities[i], entities[j])
+
+        # Identify connected components (clusters)
+        clusters = list(nx.connected_components(G))
+        entity_to_cluster = {
+            entity: idx for idx, cluster in enumerate(clusters) for entity in cluster
+        }
+
+        # Assign cluster_id to each entity
+        df['cluster_id'] = df['name'].map(entity_to_cluster).fillna(-1).astype(int)
+
+        df.sort_values(by='cluster_id', ascending=False)
+
+        return df
     
     def get_summary_statistics(self, df: 'pd.DataFrame') -> Dict[str, Any]:
         """

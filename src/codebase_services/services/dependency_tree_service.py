@@ -1,6 +1,12 @@
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Any
 import ast
+try:
+    import networkx as nx
+    from pyvis.network import Network
+    VISUALIZATION_AVAILABLE = True
+except ImportError:
+    VISUALIZATION_AVAILABLE = False
 from ..core.parser import CodeParser
 from ..core.dependency_resolver import DependencyResolver
 from ..entities.entities import CodeEntity, DependencyNode, DependencyTree
@@ -19,6 +25,7 @@ class DependencyTreeService:
         self.dependency_resolver = dependency_resolver
         self._codebase_cache: Dict[str, List[CodeEntity]] = {}
         self._visited_entities: Set[str] = set()
+        self._node_registry: Dict[str, DependencyNode] = {}
     
     def build_dependency_tree(self, 
                             file_path: Path, 
@@ -45,21 +52,27 @@ class DependencyTreeService:
         # Clear caches for fresh analysis
         self._codebase_cache.clear()
         self._visited_entities.clear()
+        self._node_registry.clear()
         
         # Find target entity
         target_entity = self._find_target_entity(file_path, entity_name, entity_type)
         if not target_entity:
             raise ValueError(f"Entity '{entity_name}' of type '{entity_type}' not found in {file_path}")
         
-        # Create target node
+        # Create enhanced target node with path tracking
         target_node = DependencyNode(
             name=target_entity.name,
             entity_type=target_entity.entity_type,
             file_path=str(file_path),
             line_start=target_entity.line_start,
             line_end=target_entity.line_end,
-            dependency_type='target'
+            dependency_type='target',
+            depth=0,
+            dependency_path=[]  # Root has empty path
         )
+        
+        # Register target node
+        self._node_registry[target_node.node_id] = target_node
         
         # Build upstream dependencies (what target depends on)
         upstream = self._build_upstream_tree(target_entity, file_path, codebase_root, max_depth)
@@ -67,13 +80,17 @@ class DependencyTreeService:
         # Reset visited entities for downstream analysis
         self._visited_entities.clear()
         
-        # Build downstream dependencies (what depends on target)
-        downstream = self._build_downstream_tree(target_entity, file_path, codebase_root, max_depth)
+        # Build downstream dependencies with path tracking
+        downstream = self._build_downstream_tree(
+            target_entity, file_path, codebase_root, max_depth, 0,
+            target_node.node_id, [target_node.name]
+        )
         
         return DependencyTree(
             target=target_node,
             upstream=upstream,
-            downstream=downstream
+            downstream=downstream,
+            node_registry=self._node_registry.copy()
         )
     
     def _find_target_entity(self, file_path: Path, entity_name: str, entity_type: str) -> Optional[CodeEntity]:
@@ -143,9 +160,14 @@ class DependencyTreeService:
                              current_file: Path,
                              codebase_root: Path, 
                              max_depth: Optional[int],
-                             current_depth: int = 0) -> Dict[str, Any]:
-        """Build downstream dependency tree (what depends on target)."""
+                             current_depth: int = 0,
+                             parent_node_id: Optional[str] = None,
+                             current_path: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Build downstream dependency tree (what depends on target) with path tracking."""
         entity_key = f"{target_entity.name}@{current_file}"
+        
+        if current_path is None:
+            current_path = []
         
         if entity_key in self._visited_entities:
             return {'cyclic_reference': entity_key}
@@ -155,8 +177,11 @@ class DependencyTreeService:
         
         self._visited_entities.add(entity_key)
         
-        # Find direct dependents
-        direct_deps = self._find_direct_dependents(target_entity, current_file, codebase_root, current_depth)
+        # Find direct dependents with path tracking
+        direct_deps = self._find_direct_dependents(
+            target_entity, current_file, codebase_root, current_depth,
+            parent_node_id, current_path
+        )
         
         result = {
             'direct': direct_deps,
@@ -164,15 +189,24 @@ class DependencyTreeService:
             'depth': current_depth
         }
         
-        # Recursively build indirect dependencies
+        # Recursively build indirect dependencies with path tracking
         for dep_node in direct_deps:
             dep_file = Path(dep_node.file_path)
             dep_entity = self._find_target_entity(dep_file, dep_node.name, dep_node.entity_type)
             
             if dep_entity:
+                # Update parent's children list
+                if parent_node_id and parent_node_id in self._node_registry:
+                    parent = self._node_registry[parent_node_id]
+                    if dep_node.node_id not in parent.children_node_ids:
+                        parent.children_node_ids.append(dep_node.node_id)
+                
+                # Build next level with extended path
+                next_path = current_path + [dep_node.name]
                 indirect_key = f"{dep_node.name}@{dep_node.file_path}"
                 result['indirect'][indirect_key] = self._build_downstream_tree(
-                    dep_entity, dep_file, codebase_root, max_depth, current_depth + 1
+                    dep_entity, dep_file, codebase_root, max_depth, current_depth + 1,
+                    dep_node.node_id, next_path
                 )
         
         self._visited_entities.remove(entity_key)
@@ -215,9 +249,14 @@ class DependencyTreeService:
                               target_entity: CodeEntity, 
                               target_file: Path, 
                               codebase_root: Path,
-                              current_depth: int = 0) -> List[DependencyNode]:
-        """Find entities that directly depend on the target entity."""
+                              current_depth: int = 0,
+                              parent_node_id: Optional[str] = None,
+                              current_path: Optional[List[str]] = None) -> List[DependencyNode]:
+        """Find entities that directly depend on the target entity with path tracking."""
         dependents = []
+        
+        if current_path is None:
+            current_path = []
         
         # Scan all Python files in codebase
         for py_file in codebase_root.rglob("*.py"):
@@ -233,15 +272,22 @@ class DependencyTreeService:
                 )
                 
                 if dependency_info:
-                    dependents.append(DependencyNode(
+                    # Create enhanced node with path tracking
+                    enhanced_node = DependencyNode(
                         name=entity.name,
                         entity_type=entity.entity_type,
                         file_path=str(py_file),
                         line_start=entity.line_start,
                         line_end=entity.line_end,
                         dependency_type=dependency_info['type'],
-                        depth=current_depth  # ✅ Fixed: Pass current depth
-                    ))
+                        depth=current_depth,
+                        parent_node_id=parent_node_id,
+                        dependency_path=current_path.copy()  # Path to this node
+                    )
+                    
+                    # Register node for path lookup
+                    self._node_registry[enhanced_node.node_id] = enhanced_node
+                    dependents.append(enhanced_node)
         
         return dependents
     
@@ -453,4 +499,65 @@ class DependencyTreeService:
                                 target_file: Path) -> bool:
         """Check if an entity references the target entity."""
         # Simple name-based check (can be enhanced)
-        return target_entity.name in entity.source_code 
+        return target_entity.name in entity.source_code
+    
+    def create_interactive_dependency_graph(self, 
+                                          tree: DependencyTree,
+                                          output_filename: str = "dependency_graph.html",
+                                          height: str = "900px",
+                                          width: str = "100%") -> str:
+        """
+        Create an interactive dependency graph using NetworkX and Pyvis.
+        
+        Args:
+            tree: DependencyTree object to visualize
+            output_filename: Name of the HTML file to generate
+            height: Height of the visualization
+            width: Width of the visualization
+        
+        Returns:
+            Path to the generated HTML file
+        
+        Raises:
+            ImportError: If networkx or pyvis are not installed
+        """
+        if not VISUALIZATION_AVAILABLE:
+            raise ImportError(
+                "networkx and pyvis are required for graph visualization. "
+                "Install with: pip install networkx pyvis"
+            )
+        
+        # Get all dependencies as DataFrame
+        df = tree.get_all_dependencies_df()
+        
+        # === Build Graph from parent-child relationships ===
+        edges_df = df.dropna(subset=["parent_node_id"])
+        edges = list(zip(edges_df["parent_node_id"], edges_df["node_id"]))
+        
+        # Build directed graph
+        G = nx.DiGraph()
+        G.add_edges_from(edges)
+        
+        # === Set up interactive Pyvis graph ===
+        net = Network(notebook=True, height=height, width=width, directed=True)
+        
+        # Simplified label: just entity name (could also truncate path if needed)
+        label_map = dict(zip(df["node_id"], df["name"]))
+        
+        # Add nodes with optional depth-based color
+        depth_map = dict(zip(df["node_id"], df["depth"]))
+        for node in G.nodes:
+            label = label_map.get(node, node.split('/')[-1][:30])
+            depth = depth_map.get(node, 0)
+            net.add_node(node, label=label, title=node, level=depth)
+        
+        # Add edges
+        for source, target in G.edges:
+            net.add_edge(source, target)
+        
+        net.show_buttons(filter_=['physics']) 
+        
+        # === Show or Save to HTML ===
+        net.show(output_filename)
+        
+        return output_filename 

@@ -43,7 +43,7 @@ def main():
     parser.add_argument(
         "--format",
         "-f",
-        choices=["tree", "graph", "list", "df"],
+        choices=["tree", "graph", "list", "df", "paths", "depths", "interactive"],
         default="tree",
         help="Output format (default: tree)"
     )
@@ -134,8 +134,51 @@ def main():
             all_deps = tree.get_all_dependencies_df()
             output = all_deps
         
+        elif args.format == "paths":
+            output = tree.to_path_report()
+        
+        elif args.format == "depths":
+            depth_groups = tree.dependency_depths_grouped()
+            output = f"📊 Dependency Depth Analysis for: {args.entity_name} ({args.entity_type})\n"
+            output += "=" * 60 + "\n\n"
+            
+            for depth in sorted(depth_groups.keys()):
+                nodes = depth_groups[depth]
+                output += f"🔍 Depth {depth}: {len(nodes)} dependencies\n"
+                
+                for i, node in enumerate(nodes[:5]):  # Show first 5 per depth
+                    output += f"   {i+1}. {node.name} [{node.dependency_type}]\n"
+                    output += f"      Path: {node.path_string}\n"
+                    output += f"      File: {node.file_path}:{node.line_start}\n"
+                
+                if len(nodes) > 5:
+                    output += f"   ... and {len(nodes) - 5} more at depth {depth}\n"
+                output += "\n"
+        
+        elif args.format == "interactive":
+            # Generate interactive HTML graph
+            output_file = args.output or f"{args.entity_name}_dependency_graph.html"
+            html_file = dependency_service.create_interactive_dependency_graph(
+                tree=tree,
+                output_filename=str(output_file)
+            )
+            output = f"🎯 Interactive dependency graph generated!\n"
+            output += f"📄 File: {html_file}\n"
+            output += f"🌐 Open in browser to view interactive visualization\n"
+            output += f"\nGraph includes:\n"
+            output += f"  • Target: {args.entity_name} ({args.entity_type})\n"
+            
+            all_deps = tree.get_all_dependencies()
+            output += f"  • Total dependencies: {len(all_deps)}\n"
+            
+            depth_groups = tree.dependency_depths_grouped()
+            output += f"  • Maximum depth: {max(depth_groups.keys()) if depth_groups else 0}\n"
+        
         # Save or print output
-        if args.output:
+        if args.format == "interactive":
+            # Interactive format already saved the HTML file
+            print(output)
+        elif args.output:
             args.output.write_text(output)
             print(f"✅ Dependency analysis saved to: {args.output}")
         else:
