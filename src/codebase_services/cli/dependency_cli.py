@@ -12,7 +12,16 @@ from ..main import create_dependency_tree_service
 def main():
     """Main CLI entry point for dependency tree analysis."""
     parser = argparse.ArgumentParser(
-        description="Build comprehensive dependency trees for Python code entities"
+        description="Build comprehensive dependency trees for Python code entities. "
+                   "Features enhanced tree grouping and visualization with root_node_id tracking.",
+        epilog="Examples:\n"
+               "  # Enhanced tree report with grouping\n"
+               "  %(prog)s main.py commit_revision function --format paths\n"
+               "  # Tree statistics showing clusters\n" 
+               "  %(prog)s main.py commit_revision function --format trees\n"
+               "  # Interactive colored graph\n"
+               "  %(prog)s main.py commit_revision function --format interactive\n",
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument(
         "file_path",
@@ -43,9 +52,9 @@ def main():
     parser.add_argument(
         "--format",
         "-f",
-        choices=["tree", "graph", "list", "df", "paths", "depths", "interactive"],
+        choices=["tree", "graph", "list", "df", "paths", "trees", "depths", "interactive"],
         default="tree",
-        help="Output format (default: tree)"
+        help="Output format: tree (basic), paths (enhanced with tree grouping), trees (tree statistics), interactive (colored graph), etc."
     )
     parser.add_argument(
         "--output",
@@ -137,6 +146,9 @@ def main():
         elif args.format == "paths":
             output = tree.to_path_report()
         
+        elif args.format == "trees":
+            output = tree.to_tree_statistics()
+        
         elif args.format == "depths":
             depth_groups = tree.dependency_depths_grouped()
             output = f"📊 Dependency Depth Analysis for: {args.entity_name} ({args.entity_type})\n"
@@ -146,13 +158,13 @@ def main():
                 nodes = depth_groups[depth]
                 output += f"🔍 Depth {depth}: {len(nodes)} dependencies\n"
                 
-                for i, node in enumerate(nodes[:5]):  # Show first 5 per depth
+                for i, node in enumerate(nodes[:20]):  # Show first 5 per depth
                     output += f"   {i+1}. {node.name} [{node.dependency_type}]\n"
                     output += f"      Path: {node.path_string}\n"
                     output += f"      File: {node.file_path}:{node.line_start}\n"
                 
-                if len(nodes) > 5:
-                    output += f"   ... and {len(nodes) - 5} more at depth {depth}\n"
+                if len(nodes) > 20:
+                    output += f"   ... and {len(nodes) - 20} more at depth {depth}\n"
                 output += "\n"
         
         elif args.format == "interactive":

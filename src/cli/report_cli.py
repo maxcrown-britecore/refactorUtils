@@ -48,13 +48,15 @@ def main():
         # Determine files to analyze
         if args.source.is_file():
             if not args.source.suffix == '.py':
-                print("❌ Error: Source file must be a Python file", file=sys.stderr)
+                print("❌ Error: Source file must be a Python file",
+                      file=sys.stderr)
                 return 1
             file_paths = [args.source]
         elif args.source.is_dir():
             file_paths = list(args.source.rglob("*.py"))
             if not file_paths:
-                print("❌ Error: No Python files found in directory", file=sys.stderr)
+                print("❌ Error: No Python files found in directory",
+                      file=sys.stderr)
                 return 1
         else:
             print("❌ Error: Source path does not exist", file=sys.stderr)

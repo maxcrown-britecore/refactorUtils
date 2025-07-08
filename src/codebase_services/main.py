@@ -37,7 +37,8 @@ def create_report_service() -> CodeReportService:
     """
     parser = PythonASTParser()
     dependency_resolver = DependencyResolver()
-    return CodeReportService(parser, dependency_resolver)
+    import_analyzer = ImportAnalyzer()
+    return CodeReportService(parser, dependency_resolver, import_analyzer)
 
 
 def create_dependency_tree_service() -> DependencyTreeService:
