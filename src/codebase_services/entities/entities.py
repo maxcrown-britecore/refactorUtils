@@ -55,6 +55,7 @@ class DependencyNode:
     
     # NEW: Parent-child relationship tracking
     parent_node_id: Optional[str] = None
+    root_node_id: Optional[str] = None  # Points to tree root
     dependency_path: List[str] = field(default_factory=list)
     children_node_ids: List[str] = field(default_factory=list)
     
@@ -198,8 +199,14 @@ class DependencyTree:
     
     def get_all_dependencies_df(self) -> pd.DataFrame:
         """Get all dependencies as a DataFrame."""
-        affected_dependencies = self.get_all_dependencies()
-        list_of_dicts = [node.to_dict for node in affected_dependencies]
+        # Include all nodes from the registry (target + all dependencies)
+        all_nodes = list(self.node_registry.values())
+        
+        # Ensure target node is included
+        if self.target.node_id not in self.node_registry:
+            all_nodes.append(self.target)
+        
+        list_of_dicts = [node.to_dict for node in all_nodes]
         return pd.DataFrame(list_of_dicts)
     
     def _flatten_dependencies(self, tree_dict: Dict[str, Any]) -> List[DependencyNode]:
@@ -267,35 +274,177 @@ class DependencyTree:
         return [self.node_registry[child_id] for child_id in node.children_node_ids 
                 if child_id in self.node_registry]
     
-    def to_path_report(self) -> str:
-        """Generate a report showing dependency paths."""
+    def get_nodes_by_root(self, root_node_id: str) -> List[DependencyNode]:
+        """Get all nodes belonging to a specific root tree."""
+        return [node for node in self.node_registry.values() 
+                if node.root_node_id == root_node_id]
+    
+    def group_nodes_by_root(self) -> Dict[str, List[DependencyNode]]:
+        """Group all nodes by their root tree."""
+        from collections import defaultdict
+        grouped = defaultdict(list)
+        for node in self.node_registry.values():
+            if node.root_node_id:
+                grouped[node.root_node_id].append(node)
+        return dict(grouped)
+    
+    def get_tree_roots(self) -> List[DependencyNode]:
+        """Get all nodes that are roots of their own trees."""
+        return [node for node in self.node_registry.values() 
+                if node.root_node_id == node.node_id]
+    
+    def to_tree_statistics(self) -> str:
+        """Generate statistics about dependency trees grouped by root_node_id."""
         result = []
-        result.append(f"📊 Dependency Path Analysis for: {self.target.name}")
+        result.append(f"🌳 Dependency Tree Statistics for: {self.target.name}")
         result.append("=" * 60)
         result.append("")
         
-        # Group nodes by depth
-        depth_groups = {}
-        for node in self.node_registry.values():
-            depth = node.depth
-            if depth not in depth_groups:
-                depth_groups[depth] = []
-            depth_groups[depth].append(node)
+        # Group nodes by root
+        trees_by_root = self.group_nodes_by_root()
         
-        # Show paths for each depth level
-        for depth in sorted(depth_groups.keys()):
-            nodes = depth_groups[depth]
-            result.append(f"🔍 Depth {depth} Dependencies ({len(nodes)} nodes):")
+        if not trees_by_root:
+            result.append("No dependency trees found.")
+            return "\n".join(result)
+        
+        # Overall statistics
+        total_nodes = sum(len(nodes) for nodes in trees_by_root.values())
+        target_tree_nodes = len(trees_by_root.get(self.target.node_id, []))
+        external_tree_nodes = total_nodes - target_tree_nodes
+        
+        result.append("📊 OVERVIEW")
+        result.append("-" * 20)
+        result.append(f"Total Trees: {len(trees_by_root)}")
+        result.append(f"Total Nodes: {total_nodes}")
+        result.append(f"Target Tree Nodes: {target_tree_nodes}")
+        result.append(f"External Tree Nodes: {external_tree_nodes}")
+        result.append("")
+        
+        # Tree-by-tree statistics
+        result.append("🌲 TREE BREAKDOWN")
+        result.append("-" * 25)
+        
+        for tree_idx, (root_node_id, tree_nodes) in enumerate(trees_by_root.items(), 1):
+            root_node = self.node_registry.get(root_node_id)
+            
+            if root_node:
+                tree_name = f"{root_node.name} ({root_node.entity_type})"
+                tree_type = "🎯 TARGET" if root_node_id == self.target.node_id else f"🔗 EXTERNAL #{tree_idx-1}"
+            else:
+                tree_name = root_node_id
+                tree_type = "❓ UNKNOWN"
+            
+            result.append(f"{tree_type}: {tree_name}")
+            result.append(f"   📈 Size: {len(tree_nodes)} nodes")
+            
+            # Depth distribution
+            depth_counts = {}
+            for node in tree_nodes:
+                depth = node.depth
+                depth_counts[depth] = depth_counts.get(depth, 0) + 1
+            
+            depth_info = []
+            for depth in sorted(depth_counts.keys()):
+                count = depth_counts[depth]
+                if depth == 0:
+                    depth_info.append(f"ROOT: {count}")
+                elif depth < 0:
+                    depth_info.append(f"⬆️{depth}: {count}")
+                else:
+                    depth_info.append(f"⬇️{depth}: {count}")
+            
+            result.append(f"   📏 Depth: {', '.join(depth_info)}")
+            
+            # Dependency types
+            type_counts = {}
+            for node in tree_nodes:
+                dep_type = node.dependency_type
+                type_counts[dep_type] = type_counts.get(dep_type, 0) + 1
+            
+            type_info = [f"{t}: {c}" for t, c in type_counts.items()]
+            result.append(f"   🔗 Types: {', '.join(type_info)}")
+            result.append("")
+        
+        return "\n".join(result)
+
+    def to_path_report(self) -> str:
+        """Generate a report showing dependency paths grouped by tree roots."""
+        result = []
+        result.append(f"📊 Dependency Tree Analysis for: {self.target.name}")
+        result.append("=" * 60)
+        result.append("")
+        
+        # Group nodes by root_node_id
+        trees_by_root = self.group_nodes_by_root()
+        
+        if not trees_by_root:
+            result.append("No dependencies found.")
+            return "\n".join(result)
+        
+        # Show each tree separately
+        for tree_idx, (root_node_id, tree_nodes) in enumerate(trees_by_root.items(), 1):
+            # Get root node info
+            root_node = self.node_registry.get(root_node_id)
+            if root_node:
+                tree_name = f"{root_node.name} ({root_node.entity_type})"
+                tree_type = "🎯 TARGET TREE" if root_node_id == self.target.node_id else f"🔗 EXTERNAL TREE #{tree_idx-1}"
+            else:
+                tree_name = root_node_id
+                tree_type = "❓ UNKNOWN TREE"
+            
+            result.append(f"{tree_type}: {tree_name}")
+            result.append("─" * 50)
+            result.append(f"📈 Tree Size: {len(tree_nodes)} nodes")
             result.append("")
             
-            for node in nodes[:10]:  # Show first 10 per depth
-                result.append(f"   📍 {node.name} [{node.dependency_type}]")
-                result.append(f"      Path: {node.path_string}")
-                result.append(f"      File: {node.file_path}:{node.line_start}")
-                result.append("")
+            # Group tree nodes by depth for hierarchical display
+            depth_groups = {}
+            for node in tree_nodes:
+                depth = node.depth
+                if depth not in depth_groups:
+                    depth_groups[depth] = []
+                depth_groups[depth].append(node)
             
-            if len(nodes) > 10:
-                result.append(f"   ... and {len(nodes) - 10} more at depth {depth}")
+            # Show hierarchy within this tree
+            for depth in sorted(depth_groups.keys()):
+                nodes = depth_groups[depth]
+                depth_label = "ROOT" if depth == 0 else f"DEPTH {depth}"
+                direction = ""
+                if depth < 0:
+                    direction = " (⬆️ UPSTREAM)"
+                elif depth > 0:
+                    direction = " (⬇️ DOWNSTREAM)"
+                
+                result.append(f"   🔍 {depth_label}{direction} ({len(nodes)} nodes):")
                 result.append("")
+                
+                # Show up to 8 nodes per depth to keep report manageable
+                for node in nodes[:8]:
+                    indent = "      "
+                    if depth != 0:
+                        indent = "        "
+                    
+                    result.append(f"{indent}📍 {node.name} [{node.dependency_type}]")
+                    if node.parent_node_id and node.parent_node_id != root_node_id:
+                        parent = self.node_registry.get(node.parent_node_id)
+                        parent_name = parent.name if parent else "Unknown"
+                        result.append(f"{indent}   ↳ Parent: {parent_name}")
+                    result.append(f"{indent}   📁 {node.file_path}:{node.line_start}")
+                    result.append("")
+                
+                if len(nodes) > 8:
+                    result.append(f"{indent}... and {len(nodes) - 8} more at depth {depth}")
+                    result.append("")
+            
+            result.append("")
+        
+        # Summary statistics
+        result.append("📊 SUMMARY STATISTICS")
+        result.append("=" * 30)
+        total_nodes = sum(len(nodes) for nodes in trees_by_root.values())
+        result.append(f"Total Trees: {len(trees_by_root)}")
+        result.append(f"Total Nodes: {total_nodes}")
+        result.append(f"Target Tree Nodes: {len(trees_by_root.get(self.target.node_id, []))}")
+        result.append(f"External Tree Nodes: {total_nodes - len(trees_by_root.get(self.target.node_id, []))}")
         
         return "\n".join(result)

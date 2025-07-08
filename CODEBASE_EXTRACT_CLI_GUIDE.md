@@ -23,13 +23,16 @@ A powerful command-line tool for extracting and refactoring Python code entities
 codebase-extract src/large_module.py
 
 # Extract specific entities only
-codebase-extract src/models.py --entities UserModel validate_email
+codebase-extract src/models.py --entities UserModel,validate_email
 
 # Move entities to a single target file
-codebase-extract src/utils.py --entities helper_func calculate_tax --target-file src/math_utils.py
+codebase-extract src/utils.py --entities helper_func,calculate_tax --target-file src/math_utils.py
 
 # Extract and remove from source (cut mode)
-codebase-extract src/legacy.py --entities OldClass --cut
+codebase-extract src/legacy.py --entities OldClass --mode cut
+
+# Extract with safe wrapper (preserves function signature)
+codebase-extract src/legacy.py --entities helper_function --mode safe
 
 # Extract with custom header and Python 2 compatibility
 codebase-extract src/core.py --entities CoreEngine --py2-import --custom-block "# Extracted from core module"
@@ -74,19 +77,21 @@ codebase-extract <source_file> [OPTIONS]
 
 | Option | Short | Description | Default |
 |--------|-------|-------------|---------|
-| `--entities` | `-e` | Names of specific entities to extract | Extract all |
-| `--target-file` | `-t` | Target file to move entities to | Create separate files |
-| `--cut` | `-c` | Remove entities from source after extraction | Keep in source |
+| `--entities` | `-e` | Comma-separated names of specific entities to extract | Extract all |
+| `--target-folder` | `-t` | Target folder or file path for extracted entities | Create separate files |
+| `--mode` | `-m` | Extraction mode: `copy`, `cut`, or `safe` | `copy` |
 | `--py2-import` | | Add Python 2 compatibility imports | No compatibility imports |
 | `--custom-block` | | Custom comment block to add to extracted files | No custom block |
 | `--root-prefix` | | Root path prefix for import statements | Auto-detect |
 
 ## 🔄 Extraction Modes
 
-### 1. **Separate Files Mode** (Default)
-Creates individual files for each extracted entity.
+### 1. **Copy Mode** (Default: `--mode copy`)
+Creates new files while leaving the original entities intact in the source file.
 
 ```bash
+codebase-extract src/models.py --entities UserModel ProductModel --mode copy
+# or simply:
 codebase-extract src/models.py --entities UserModel ProductModel
 ```
 
@@ -99,25 +104,11 @@ src/
 └── __init__.py        # Updated with imports
 ```
 
-### 2. **Target File Mode**
-Moves all entities to a single specified file.
+### 2. **Cut Mode** (`--mode cut`)
+Removes entities from source file after extraction (destructive).
 
 ```bash
-codebase-extract src/utils.py --entities helper_func validator --target-file src/shared_utils.py
-```
-
-**Result:**
-```
-src/
-├── utils.py           # Original file (unchanged)
-└── shared_utils.py    # Contains helper_func and validator
-```
-
-### 3. **Cut Mode**
-Removes entities from source file after extraction.
-
-```bash
-codebase-extract src/legacy.py --entities OldClass deprecated_func --cut
+codebase-extract src/legacy.py --entities OldClass deprecated_func --mode cut
 ```
 
 **Result:**
@@ -128,18 +119,50 @@ src/
 └── deprecated_func.py # New file with deprecated_func
 ```
 
-### 4. **Combined Modes**
-Cut mode with target file consolidation.
+### 3. **Safe Mode** (`--mode safe`) ⭐ New!
+Replaces entities in source with import wrappers, maintaining backward compatibility.
 
 ```bash
-codebase-extract src/monolith.py --entities ServiceA ServiceB --target-file src/services.py --cut
+codebase-extract src/utils.py --entities helper_function --mode safe
 ```
 
-**Result:**
+**Original `src/utils.py`:**
+```python
+def helper_function(arg1, arg2="default"):
+    """Original implementation."""
+    return f"processing {arg1} with {arg2}"
 ```
-src/
-├── monolith.py        # Modified: ServiceA and ServiceB removed
-└── services.py        # Contains both ServiceA and ServiceB
+
+**After safe extraction:**
+
+**`src/helper_function.py`:** (extracted)
+```python
+def helper_function(arg1, arg2="default"):
+    """Original implementation."""
+    return f"processing {arg1} with {arg2}"
+```
+
+**`src/utils.py`:** (wrapper)
+```python
+def helper_function(arg1, arg2="default"):
+    from .helper_function import helper_function
+    return helper_function(arg1, arg2)
+```
+
+This allows existing code to continue working unchanged while the implementation is moved to a separate file.
+
+### 4. **Target Folder/File Combinations**
+All modes work with target folder specification:
+
+```bash
+# Copy to specific directory
+codebase-extract src/models.py --entities User --target-folder models/ --mode copy
+
+# Cut and move to specific file
+codebase-extract src/monolith.py --entities ServiceA ServiceB --target-folder services/core.py --mode cut
+
+# Safe extraction to organized structure
+codebase-extract src/legacy.py --entities helper_func --target-folder utils/helpers.py --mode safe
 ```
 
 ## 💡 Usage Examples
@@ -170,30 +193,43 @@ codebase-extract src/legacy.py --entities DatabaseManager ConfigHandler LogManag
 codebase-extract src/complex.py --entities main_algorithm helper_function
 ```
 
-### Target File Consolidation
+### Target Folder Consolidation
 
 ```bash
 # Consolidate utilities into shared module
-codebase-extract src/module1.py --entities util_func1 util_func2 --target-file src/shared_utils.py
+codebase-extract src/module1.py --entities util_func1,util_func2 --target-folder src/shared_utils.py
 
-# Move models to dedicated models file
-codebase-extract src/app.py --entities User Product Category --target-file src/models.py
+# Move models to dedicated models directory
+codebase-extract src/app.py --entities User,Product,Category --target-folder src/models/
 
-# Consolidate validators
-codebase-extract src/forms.py --entities email_validator phone_validator --target-file src/validators.py
+# Consolidate validators in specific file
+codebase-extract src/forms.py --entities email_validator,phone_validator --target-folder src/validators.py
 ```
 
 ### Cut Mode (Destructive)
 
 ```bash
 # Remove deprecated code
-codebase-extract src/old_system.py --entities DeprecatedClass old_function --cut
+codebase-extract src/old_system.py --entities DeprecatedClass,old_function --mode cut
 
 # Extract and remove test helpers
-codebase-extract src/main.py --entities TestHelper debug_function --target-file tests/helpers.py --cut
+codebase-extract src/main.py --entities TestHelper,debug_function --target-folder tests/helpers.py --mode cut
 
 # Refactor by moving classes out
-codebase-extract src/monolith.py --entities UserService ProductService --cut
+codebase-extract src/monolith.py --entities UserService,ProductService --mode cut
+```
+
+### Safe Mode (Backward Compatible)
+
+```bash
+# Safely extract utility functions (preserves API)
+codebase-extract src/utils.py --entities calculate_tax,format_currency --mode safe
+
+# Extract legacy functions with compatibility wrappers
+codebase-extract src/legacy.py --entities old_helper,deprecated_util --target-folder utils/ --mode safe
+
+# Gradually refactor large functions
+codebase-extract src/monolith.py --entities process_payment --target-folder services/payment.py --mode safe
 ```
 
 ### Advanced Configuration
@@ -208,14 +244,21 @@ codebase-extract src/core.py --entities Engine --custom-block "# Core Engine Mod
 # Extract with custom import prefix
 codebase-extract src/package/module.py --entities Helper --root-prefix myproject.package
 
-# Full-featured extraction
+# Safe mode with all features
 codebase-extract src/complex.py \
-  --entities MainClass HelperClass \
-  --target-file src/refactored.py \
-  --cut \
+  --entities MainClass,HelperClass \
+  --target-folder src/refactored.py \
+  --mode safe \
   --py2-import \
   --custom-block "# Refactored from complex.py\n# Date: 2024-01-15" \
   --root-prefix myproject.core
+
+# Cut mode with target folder
+codebase-extract src/legacy.py \
+  --entities OldService,DeprecatedHelper \
+  --target-folder services/legacy/ \
+  --mode cut \
+  --custom-block "# Legacy services - marked for replacement"
 ```
 
 ## 🔧 Advanced Features
@@ -332,96 +375,163 @@ class OldClass:
 # Step 1: Analyze the monolithic file
 codebase-report src/monolith.py --summary-only
 
-# Step 2: Extract models first
-codebase-extract src/monolith.py --entities User Product Order --target-file src/models.py
+# Step 2: Extract models first (safe mode for backward compatibility)
+codebase-extract src/monolith.py --entities User,Product,Order --target-folder src/models.py --mode safe
 
-# Step 3: Extract services
-codebase-extract src/monolith.py --entities UserService ProductService --target-file src/services.py
+# Step 3: Extract services (safe mode to preserve existing imports)
+codebase-extract src/monolith.py --entities UserService,ProductService --target-folder src/services.py --mode safe
 
-# Step 4: Extract utilities
-codebase-extract src/monolith.py --entities validate_email format_currency --target-file src/utils.py
+# Step 4: Extract utilities (copy mode to keep in monolith temporarily)
+codebase-extract src/monolith.py --entities validate_email,format_currency --target-folder src/utils.py --mode copy
 
-# Step 5: Clean up monolith (cut remaining entities)
-codebase-extract src/monolith.py --entities ConfigManager --cut
+# Step 5: After testing, cut remaining entities if needed
+codebase-extract src/monolith.py --entities ConfigManager --mode cut
 ```
 
 ### Workflow 2: Legacy Code Modernization
 
 ```bash
-# Step 1: Extract reusable components
-codebase-extract src/legacy_system.py --entities DatabaseHelper FileManager --target-file src/shared/legacy_utils.py
+# Step 1: Extract reusable components (safe mode for compatibility)
+codebase-extract src/legacy_system.py --entities DatabaseHelper FileManager --target-folder src/shared/legacy_utils.py --mode safe
 
-# Step 2: Extract and modernize core classes
-codebase-extract src/legacy_system.py --entities LegacyProcessor --py2-import --custom-block "# Legacy processor - needs modernization"
+# Step 2: Extract and modernize core classes (copy mode for testing)
+codebase-extract src/legacy_system.py --entities LegacyProcessor --py2-import --custom-block "# Legacy processor - needs modernization" --mode copy
 
-# Step 3: Remove deprecated code
-codebase-extract src/legacy_system.py --entities DeprecatedClass old_function --cut
+# Step 3: After validation, use safe mode to replace deprecated code gradually
+codebase-extract src/legacy_system.py --entities DeprecatedClass old_function --mode safe
 
-# Step 4: Verify remaining code
+# Step 4: Finally cut truly obsolete code
+codebase-extract src/legacy_system.py --entities TrulyObsoleteClass --mode cut
+
+# Step 5: Verify remaining code
 codebase-report src/legacy_system.py --summary-only
 ```
 
 ### Workflow 3: Microservice Extraction
 
 ```bash
-# Extract user-related functionality
+# Extract user-related functionality (safe mode first for testing)
 codebase-extract src/monolith.py \
-  --entities User UserService UserValidator \
-  --target-file microservices/user_service/models.py \
-  --cut
+  --entities User,UserService,UserValidator \
+  --target-folder microservices/user_service/models.py \
+  --mode safe
 
-# Extract product functionality  
+# After testing microservice, cut the entities
 codebase-extract src/monolith.py \
-  --entities Product ProductService ProductValidator \
-  --target-file microservices/product_service/models.py \
-  --cut
+  --entities User,UserService,UserValidator \
+  --mode cut
 
-# Extract shared utilities
+# Extract product functionality (safe mode for gradual migration)
 codebase-extract src/monolith.py \
-  --entities EmailSender Logger \
-  --target-file shared/common_utils.py \
-  --cut
+  --entities Product,ProductService,ProductValidator \
+  --target-folder microservices/product_service/models.py \
+  --mode safe
+
+# Extract shared utilities (copy mode to share between services)
+codebase-extract src/monolith.py \
+  --entities EmailSender,Logger \
+  --target-folder shared/common_utils.py \
+  --mode copy
 ```
 
 ### Workflow 4: Test Code Organization
 
 ```bash
-# Extract test utilities
+# Extract test utilities (copy mode to share across tests)
 codebase-extract tests/test_main.py \
-  --entities TestHelper MockDatabase \
-  --target-file tests/utils/test_helpers.py
+  --entities TestHelper,MockDatabase \
+  --target-folder tests/utils/test_helpers.py \
+  --mode copy
 
-# Extract specific test classes
+# Extract specific test classes (cut mode for reorganization)
 codebase-extract tests/test_models.py \
-  --entities UserTestCase ProductTestCase \
-  --cut
+  --entities UserTestCase,ProductTestCase \
+  --mode cut
 
-# Reorganize by feature
+# Reorganize by feature (cut mode for clean separation)
 codebase-extract tests/test_services.py \
   --entities UserServiceTests \
-  --target-file tests/user/test_user_service.py \
-  --cut
+  --target-folder tests/user/test_user_service.py \
+  --mode cut
 ```
 
 ### Workflow 5: Library Development
 
 ```bash
-# Extract public API classes
+# Extract public API classes (safe mode to maintain compatibility)
 codebase-extract src/internal.py \
-  --entities PublicAPI ClientManager \
-  --target-file src/api.py \
+  --entities PublicAPI,ClientManager \
+  --target-folder src/api.py \
+  --mode safe \
   --custom-block "# Public API - Stable Interface"
 
-# Extract internal utilities (keep private)
+# Extract internal utilities (copy mode to keep in both places)
 codebase-extract src/internal.py \
-  --entities InternalHelper PrivateManager \
-  --target-file src/_internal_utils.py
+  --entities InternalHelper,PrivateManager \
+  --target-folder src/_internal_utils.py \
+  --mode copy
 
-# Extract examples
+# Extract examples (cut mode as they don't belong in main code)
 codebase-extract src/internal.py \
-  --entities ExampleUsage DemoClass \
-  --target-file examples/usage_examples.py \
-  --cut
+  --entities ExampleUsage,DemoClass \
+  --target-folder examples/usage_examples.py \
+  --mode cut
+```
+
+## 🎯 Mode Selection Guide
+
+### When to Use Each Mode
+
+#### **Copy Mode** (`--mode copy`) - Default & Safest ✅
+- **Use for**: Experimentation, testing extraction feasibility
+- **Benefits**: Non-destructive, allows validation before committing
+- **Best for**: New projects, proof of concepts, temporary duplicates
+
+```bash
+# Safe experimentation
+codebase-extract src/experimental.py --entities NewFeature --mode copy
+```
+
+#### **Safe Mode** (`--mode safe`) - Gradual Refactoring ⭐
+- **Use for**: Production refactoring, maintaining backward compatibility
+- **Benefits**: Preserves API contracts, allows gradual migration
+- **Best for**: Legacy systems, live applications, team environments
+
+```bash
+# Gradually modernize without breaking existing code
+codebase-extract src/legacy.py --entities CriticalFunction --mode safe --target-folder services/
+```
+
+**Safe Mode Benefits:**
+- ✅ Existing imports continue to work
+- ✅ No immediate breaking changes
+- ✅ Gradual migration path
+- ✅ Easy rollback (just remove wrapper)
+- ✅ Team can migrate at their own pace
+
+#### **Cut Mode** (`--mode cut`) - Clean Refactoring ⚠️
+- **Use for**: Final cleanup, removing obsolete code
+- **Benefits**: Clean separation, no duplication
+- **Best for**: Deprecation, architectural restructuring
+
+```bash
+# Remove after confirming safe mode works
+codebase-extract src/cleaned.py --entities ObsoleteClass --mode cut
+```
+
+### Migration Strategy
+
+```bash
+# Step 1: Copy mode for testing
+codebase-extract src/monolith.py --entities UserService --mode copy
+# Test the extracted service...
+
+# Step 2: Safe mode for production
+codebase-extract src/monolith.py --entities UserService --mode safe
+# Update applications to use new import...
+
+# Step 3: Cut mode for cleanup (optional)
+codebase-extract src/monolith.py --entities UserService --mode cut
 ```
 
 ## 📚 Best Practices
@@ -440,24 +550,28 @@ codebase-deps src/large_file.py TargetClass class --format tree
 
 ```bash
 # Extract in logical groups
-codebase-extract src/models.py --entities User Profile  # Related models
-codebase-extract src/models.py --entities Product Category  # Related models
+codebase-extract src/models.py --entities User,Profile  # Related models
+codebase-extract src/models.py --entities Product,Category  # Related models
 
 # Don't extract everything at once
 # ❌ Bad: codebase-extract src/huge_file.py  
 # ✅ Good: Extract specific, related entities
 ```
 
-### 3. **Backup Before Cut Mode**
+### 3. **Choose the Right Mode**
 
 ```bash
-# Always backup before using --cut
-cp src/important_file.py src/important_file.py.backup
+# Use copy mode for experimentation (safe, non-destructive)
+codebase-extract src/experimental.py --entities NewFeature --mode copy
 
-# Then extract with cut
-codebase-extract src/important_file.py --entities OldClass --cut
+# Use safe mode for gradual refactoring (maintains backward compatibility)
+codebase-extract src/legacy.py --entities OldFunction --mode safe
 
-# Verify result
+# Use cut mode only after thorough testing (destructive)
+cp src/important_file.py src/important_file.py.backup  # Always backup first!
+codebase-extract src/important_file.py --entities ObsoleteClass --mode cut
+
+# Verify result after any mode
 codebase-report src/important_file.py --summary-only
 ```
 
@@ -465,13 +579,16 @@ codebase-report src/important_file.py --summary-only
 
 ```bash
 # Use descriptive target file names
-codebase-extract src/utils.py --entities math_helpers --target-file src/math_utils.py
+codebase-extract src/utils.py --entities math_helpers --target-folder src/math_utils.py
 
 # Group related functionality
-codebase-extract src/models.py --entities User UserProfile --target-file src/user_models.py
+codebase-extract src/models.py --entities User,UserProfile --target-folder src/user_models.py
 
-# Use directories for organization
-codebase-extract src/services.py --entities EmailService --target-file src/services/email_service.py
+# Use directories for organization (auto-generates filename)
+codebase-extract src/services.py --entities EmailService --target-folder src/services/
+
+# Explicit file in directory
+codebase-extract src/services.py --entities EmailService --target-folder src/services/email_service.py
 ```
 
 ### 5. **Import Management**
@@ -509,7 +626,7 @@ find src/ -name "*.py" -exec wc -l {} + | awk '$1 > 300 {print "💡 Consider ex
 git checkout -b refactor/extract-user-models
 
 # Extract user-related models
-codebase-extract src/models.py --entities User UserProfile UserSettings --target-file src/user_models.py --cut
+codebase-extract src/models.py --entities User,UserProfile,UserSettings --target-file src/user_models.py --cut
 
 # Commit changes
 git add .
@@ -609,20 +726,20 @@ jobs:
 # Extract models to separate files
 extract-models:
 	@echo "🔄 Extracting model classes..."
-	codebase-extract src/models.py --entities User Product Order --cut
+	codebase-extract src/models.py --entities User,Product,Order --mode cut
 	@echo "✅ Models extracted"
 
 # Extract services to services directory
 extract-services:
 	@echo "🔄 Extracting service classes..."
 	mkdir -p src/services/
-	codebase-extract src/main.py --entities UserService ProductService --target-file src/services/business_services.py --cut
+	codebase-extract src/main.py --entities UserService,ProductService --target-folder src/services/business_services.py --mode cut
 	@echo "✅ Services extracted"
 
-# Extract utilities
+# Extract utilities (safe mode for backward compatibility)
 extract-utils:
 	@echo "🔄 Extracting utility functions..."
-	codebase-extract src/helpers.py --entities validate_email format_currency --target-file src/utils.py
+	codebase-extract src/helpers.py --entities validate_email,format_currency --target-folder src/utils.py --mode safe
 	@echo "✅ Utilities extracted"
 
 # Check for files that need extraction
@@ -654,30 +771,30 @@ echo "🔄 Starting batch extraction..."
 echo "💾 Creating backups in $BACKUP_DIR..."
 find src/ -name "*.py" -exec cp {} "$BACKUP_DIR/" \;
 
-# Extract models from multiple files
+# Extract models from multiple files (safe mode for gradual migration)
 echo "📦 Extracting models..."
 for file in src/app.py src/main.py src/core.py; do
     if [ -f "$file" ]; then
         echo "Processing $file..."
-        codebase-extract "$file" --entities User Product Order Category --target-file src/models.py 2>/dev/null || true
+        codebase-extract "$file" --entities User,Product,Order,Category --target-folder src/models.py --mode safe 2>/dev/null || true
     fi
 done
 
-# Extract services
+# Extract services (copy mode to keep functionality in place)
 echo "🔧 Extracting services..."
 for file in src/app.py src/main.py; do
     if [ -f "$file" ]; then
         echo "Processing $file..."
-        codebase-extract "$file" --entities UserService ProductService --target-file src/services.py 2>/dev/null || true
+        codebase-extract "$file" --entities UserService,ProductService --target-folder src/services.py --mode copy 2>/dev/null || true
     fi
 done
 
-# Extract utilities
+# Extract utilities (safe mode to maintain imports)
 echo "🛠️  Extracting utilities..."
 for file in src/*.py; do
     if [ -f "$file" ]; then
         echo "Processing $file..."
-        codebase-extract "$file" --entities validate_email format_currency sanitize_input --target-file src/utils.py 2>/dev/null || true
+        codebase-extract "$file" --entities validate_email,format_currency,sanitize_input --target-folder src/utils.py --mode safe 2>/dev/null || true
     fi
 done
 
@@ -861,7 +978,27 @@ touch target/file.py
 ls -la target/file.py
 
 # Use different target location
-codebase-extract src/models.py --entities MyClass --target-file ~/temp/extracted.py
+codebase-extract src/models.py --entities MyClass --target-folder ~/temp/extracted.py
+
+# Try directory instead of file
+codebase-extract src/models.py --entities MyClass --target-folder ~/temp/
+```
+
+#### 6. Safe Mode Import Issues
+```bash
+❌ Warning: Safe mode wrapper may have import conflicts
+```
+
+**Solutions:**
+```bash
+# Check for circular imports
+python -c "from src.module import function_name; print('✅ Import works')"
+
+# Verify relative import path
+codebase-extract src/models.py --entities MyClass --mode safe --target-folder services/
+
+# Use absolute imports if needed
+codebase-extract src/models.py --entities MyClass --mode safe --root-prefix myproject.src
 ```
 
 ### Performance Issues
@@ -925,7 +1062,7 @@ codebase-deps src/models.py UserModel class --format tree
 codebase-report src/models.py --format json | jq '.[] | select(.name=="UserModel")'
 
 # Test extraction on simple entities first
-codebase-extract src/models.py --entities SimpleFunction  # Start simple
+codebase-extract src/models.py --entities SimpleFunction --mode copy  # Start simple and safe
 ```
 
 #### Step-by-Step Debugging
@@ -1003,11 +1140,13 @@ echo "✅ Batch processing complete"
 The `codebase-extract` CLI is a powerful tool for code refactoring and architectural improvements. Use it to:
 
 - **✂️ Break down** monolithic files into manageable modules
-- **🔄 Refactor** legacy codebases with confidence
+- **🔄 Refactor** legacy codebases with confidence using safe mode
 - **📦 Organize** code into logical, maintainable structures
 - **🚀 Modernize** Python projects with proper separation of concerns
+- **🛡️ Maintain backward compatibility** during gradual migrations
 - **🛠️ Automate** repetitive refactoring tasks
 - **📚 Prepare** code for microservice architectures
+- **⚡ Choose your approach**: copy for testing, safe for production, cut for cleanup
 
 The tool handles complex import dependencies, maintains code integrity, and provides flexible extraction modes to suit any refactoring workflow.
 

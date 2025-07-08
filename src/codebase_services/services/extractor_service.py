@@ -5,6 +5,7 @@ from ..core import (
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from dataclasses import replace
+import ast
 
 
 class CodeExtractorService:
@@ -114,40 +115,211 @@ class CodeExtractorService:
         
         target_file.write_text(merged_content)
     
-    def _cut_entities_from_source(
-        self, source_file: Path, entities
+    def _extract_function_signature(self, entity) -> str:
+        """Extract function signature from entity source code."""
+        try:
+            tree = ast.parse(entity.source_code)
+        except SyntaxError:
+            return f"def {entity.name}(*args, **kwargs):"
+        
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == entity.name:
+                # Build argument list
+                args = []
+                
+                # Regular arguments
+                for arg in node.args.args:
+                    args.append(arg.arg)
+                
+                # Default arguments
+                defaults_offset = len(node.args.args) - len(node.args.defaults)
+                for i, default in enumerate(node.args.defaults):
+                    arg_index = defaults_offset + i
+                    if arg_index < len(node.args.args):
+                        arg_name = node.args.args[arg_index].arg
+                        # For safety, use a placeholder for default values
+                        args[arg_index] = f"{arg_name}=None"
+                
+                # *args
+                if node.args.vararg:
+                    args.append(f"*{node.args.vararg.arg}")
+                
+                # **kwargs  
+                if node.args.kwarg:
+                    args.append(f"**{node.args.kwarg.arg}")
+                
+                return f"def {entity.name}({', '.join(args)}):"
+        
+        # Fallback for classes or if function not found
+        if entity.entity_type == "class":
+            return f"class {entity.name}:"
+        else:
+            return f"def {entity.name}(*args, **kwargs):"
+
+    def _calculate_relative_import(self, source_file: Path, target_file: Path) -> str:
+        """Calculate relative import path from source to target file."""
+        try:
+            # Convert to absolute paths
+            source_abs = source_file.resolve()
+            target_abs = target_file.resolve()
+            
+            # Get relative path from source directory to target file
+            source_dir = source_abs.parent
+            rel_path = target_abs.relative_to(source_dir.parent)
+            
+            # Convert path to module notation
+            module_parts = rel_path.with_suffix('').parts
+            
+            # Calculate dots for relative import
+            # Count how many directories we need to go up
+            try:
+                # Try to find common parent
+                common = source_abs.parent
+                target_parent = target_abs.parent
+                
+                dots = 1  # Start with one dot for same level
+                while not target_parent.is_relative_to(common):
+                    common = common.parent
+                    dots += 1
+                
+                # Build module path
+                if target_parent == common:
+                    module_path = target_abs.stem
+                else:
+                    rel_to_common = target_parent.relative_to(common)
+                    module_path = '.'.join(rel_to_common.parts + (target_abs.stem,))
+                
+                return f"{'.' * dots}{module_path}"
+                
+            except ValueError:
+                # Fallback to simple relative import
+                module_path = '.'.join(module_parts)
+                return f".{module_path}"
+                
+        except Exception:
+            # Fallback to absolute import using target filename
+            return target_file.stem
+
+    def _detect_indentation(self, entity) -> str:
+        """Detect the indentation level of an entity."""
+        lines = entity.source_code.split('\n')
+        if not lines:
+            return ""
+        
+        # Find the first non-empty line (should be the entity definition)
+        for line in lines:
+            if line.strip():
+                # Count leading spaces
+                return line[:len(line) - len(line.lstrip())]
+        
+        return ""
+
+    def _generate_safe_wrapper(self, entity, source_file: Path, target_file: Path) -> str:
+        """Generate safe wrapper code for an entity."""
+        import_path = self._calculate_relative_import(source_file, target_file)
+        base_indent = self._detect_indentation(entity)
+        
+        if entity.entity_type == "function":
+            signature = self._extract_function_signature(entity)
+            
+            # Extract function name and arguments
+            func_name = entity.name
+            
+            # Parse arguments from signature for call
+            try:
+                tree = ast.parse(entity.source_code)
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.FunctionDef) and node.name == func_name:
+                        call_args = []
+                        
+                        # Regular arguments
+                        for arg in node.args.args:
+                            call_args.append(arg.arg)
+                        
+                        # *args
+                        if node.args.vararg:
+                            call_args.append(f"*{node.args.vararg.arg}")
+                        
+                        # **kwargs
+                        if node.args.kwarg:
+                            call_args.append(f"**{node.args.kwarg.arg}")
+                        
+                        call_signature = ', '.join(call_args)
+                        break
+                else:
+                    call_signature = "*args, **kwargs"
+            except Exception:
+                call_signature = "*args, **kwargs"
+            
+            # Remove 'def ' prefix if present in signature for consistency
+            if signature.startswith('def '):
+                signature = signature[4:]
+            
+            return f'''{base_indent}def {signature}
+{base_indent}    from {import_path} import {func_name}
+{base_indent}    return {func_name}({call_signature})'''
+        
+        elif entity.entity_type == "class":
+            class_name = entity.name
+            return f'''{base_indent}class {class_name}:
+{base_indent}    def __new__(cls, *args, **kwargs):
+{base_indent}        from {import_path} import {class_name}
+{base_indent}        return {class_name}(*args, **kwargs)'''
+        
+        else:
+            # Fallback for other entity types
+            return f'''{base_indent}# {entity.name} moved to {target_file.name}
+{base_indent}from {import_path} import {entity.name}'''
+
+    def _handle_entity_mode(
+        self, source_file: Path, entities, mode: str, target_file: Path = None
     ) -> bool:
-        """Remove entities from source file and clean up empty lines."""
+        """Handle entities based on extraction mode (copy/cut/safe)."""
+        if mode == "copy":
+            # Copy mode: no changes to source file
+            return False
+        
         try:
             source_content = source_file.read_text()
             lines = source_content.split('\n')
             
             # Sort entities by line_start in reverse order 
-            # (remove from bottom to top to preserve line numbers)
+            # (modify from bottom to top to preserve line numbers)
             sorted_entities = sorted(
                 entities, key=lambda e: e.line_start, reverse=True
             )
             
-            # Remove each entity's lines
+            # Handle each entity based on mode
             for entity in sorted_entities:
                 # Convert to 0-based indexing
                 start_idx = entity.line_start - 1
                 end_idx = entity.line_end - 1
                 
-                # Remove the entity lines
-                del lines[start_idx:end_idx + 1]
+                if mode == "cut":
+                    # Cut mode: remove the entity lines
+                    del lines[start_idx:end_idx + 1]
+                    
+                    # Clean up consecutive empty lines around the removed entity
+                    # Remove empty lines before the cut point
+                    while (start_idx > 0 and start_idx < len(lines) and 
+                           not lines[start_idx - 1].strip()):
+                        del lines[start_idx - 1]
+                        start_idx -= 1
+                    
+                    # Remove empty lines after the cut point  
+                    while (start_idx < len(lines) and 
+                           not lines[start_idx].strip()):
+                        del lines[start_idx]
                 
-                # Clean up consecutive empty lines around the removed entity
-                # Remove empty lines before the cut point
-                while (start_idx > 0 and start_idx < len(lines) and 
-                       not lines[start_idx - 1].strip()):
-                    del lines[start_idx - 1]
-                    start_idx -= 1
-                
-                # Remove empty lines after the cut point  
-                while (start_idx < len(lines) and 
-                       not lines[start_idx].strip()):
-                    del lines[start_idx]
+                elif mode == "safe" and target_file:
+                    # Safe mode: replace with wrapper
+                    wrapper_code = self._generate_safe_wrapper(
+                        entity, source_file, target_file
+                    )
+                    wrapper_lines = wrapper_code.split('\n')
+                    
+                    # Replace entity lines with wrapper
+                    lines[start_idx:end_idx + 1] = wrapper_lines
             
             # Write the modified content back to source file
             modified_content = '\n'.join(lines)
@@ -155,7 +327,7 @@ class CodeExtractorService:
             return True
             
         except Exception as e:
-            print(f"Warning: Failed to cut entities from source: {e}")
+            print(f"Warning: Failed to modify entities in source: {e}")
             return False
     
     def extract_code_entities(
@@ -166,7 +338,7 @@ class CodeExtractorService:
         top_custom_block: str = None, 
         root_path_prefix: str = None,
         target_file: Optional[Path] = None,
-        cut_entities: bool = False
+        mode: str = "copy"
     ) -> Dict[str, Any]:
         """
         Main method to extract functions and classes from a Python file.
@@ -174,7 +346,8 @@ class CodeExtractorService:
         If entity_names is provided, only extract the entities with the 
         given names. If target_file is provided, all entities will be moved
         to that single file instead of creating separate files.
-        If cut_entities is True, entities will be removed from source file.
+        Mode controls source handling: 'copy' leaves intact, 'cut' removes,
+        'safe' replaces with import wrapper.
         Returns a summary of the extraction process for transparency.
         """
         if not source_file.exists():
@@ -184,10 +357,10 @@ class CodeExtractorService:
             raise ValueError(f"Expected a Python file, got: {source_file}")
         
         # Parse the source file
-        all_entities = self.parser.parse(source_file)
+        all_entities, _ = self.parser.parse(source_file)
 
         # Filtered entities
-        entities = self.parser.parse(source_file, entity_names)
+        entities, _ = self.parser.parse(source_file, entity_names)
 
         # All imports
         imports = self.import_analyzer.extract_imports(source_file)
@@ -225,6 +398,10 @@ class CodeExtractorService:
                     )
                 )
                 all_dependencies.update(dependencies)
+            
+            # Filter out extracted entities from internal imports
+            if entity_names:
+                all_dependencies = {dep for dep in all_dependencies if dep not in entity_names}
             
             # Resolve combined imports
             required_imports = (
@@ -272,12 +449,12 @@ class CodeExtractorService:
                 target_file, entities, combined_imports
             )
             
-            # CUT MODE: Remove entities from source file if requested
+            # Handle source file based on mode
             source_modified = False
             entities_cut = []
-            if cut_entities:
-                source_modified = self._cut_entities_from_source(
-                    source_file, entities
+            if mode in ["cut", "safe"]:
+                source_modified = self._handle_entity_mode(
+                    source_file, entities, mode, target_file
                 )
                 if source_modified:
                     entities_cut = [entity.name for entity in entities]
@@ -293,8 +470,8 @@ class CodeExtractorService:
                 'target_file_modified': str(target_file)
             }
             
-            # Add cut mode specific fields
-            if cut_entities:
+            # Add mode specific fields
+            if mode in ["cut", "safe"]:
                 result['source_file_modified'] = source_modified
                 result['entities_cut'] = entities_cut
             
@@ -378,12 +555,12 @@ class CodeExtractorService:
             except IOError as e:
                 print(f"Warning: Failed to update __init__.py: {e}")
         
-        # CUT MODE: Remove entities from source file if requested  
+        # Handle source file based on mode
         source_modified = False
         entities_cut = []
-        if cut_entities and created_files:  # Only cut if files were created
-            source_modified = self._cut_entities_from_source(
-                source_file, entities
+        if mode in ["cut", "safe"] and created_files:  # Only modify if files were created
+            source_modified = self._handle_entity_mode(
+                source_file, entities, mode, target_file
             )
             if source_modified:
                 entities_cut = [entity.name for entity in entities]
@@ -398,8 +575,8 @@ class CodeExtractorService:
             'init_file_updated': init_updated
         }
         
-        # Add cut mode specific fields
-        if cut_entities:
+        # Add mode specific fields
+        if mode in ["cut", "safe"]:
             result['source_file_modified'] = source_modified
             result['entities_cut'] = entities_cut
         
