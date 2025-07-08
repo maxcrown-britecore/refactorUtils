@@ -139,6 +139,7 @@ def main():
                                 f"{stats['entities_with_docstrings']} "
                                 f"({stats['docstring_percentage']}%)")
                 print(docstring_info)
+                print(f"Total lines: {stats['total_lines']}")
         else:
             if args.format == "table":
                 if args.missing_imports:
